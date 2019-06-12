@@ -1,10 +1,7 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
 
 namespace CardGame {
-  public class Transition : MonoBehaviour {
+  public class Transition {
     public State next;
     public Func<bool> condition;
 

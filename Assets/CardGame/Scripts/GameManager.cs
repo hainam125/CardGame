@@ -37,16 +37,13 @@ namespace CardGame {
     private bool isAISelectingDeck;
     private bool isAISelectingCard;
     private bool isUserSelectingCard;
+    private bool isPlayerAttacking;
+    private bool isAIAttacking;
 
     private bool isAnimating;
     private bool isPlaying;
     private bool isPause;
-    private bool isBattling;
 
-    private bool isPlayerDrawing;
-    private bool isAIDrawing;
-    private bool isPlayerAttacking;
-    private bool isAIAttacking;
 
     #region main functions
     private void Awake() {

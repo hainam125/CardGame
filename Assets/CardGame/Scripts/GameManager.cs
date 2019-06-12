@@ -15,77 +15,274 @@ namespace CardGame {
     private UserInput input;
 
     private new Camera camera;
+
+    public GameState gameState;
+    private Dictionary<GameState, State> states;
+
     private CardData[] cardDatas;
     private Card[] availableCards;
     private List<Card> playingCards;
-    private HashSet<Card> playerCards;
+    private HashSet<Card> userCards;
     private HashSet<Card> aiCards;
 
-    private Card currentPlayerCard;
+    private Card currentUserCard;
     private Card currentAICard;
 
-    private int playerPoint;
+    private int userPoint;
     private int aiPoint;
 
-    private bool showResult;
-    public bool isSelectingCard;
-    public bool isAnimating;
-    public bool isPlaying;
-    public bool isPause;
-    public bool isBattling;
+    private StateMachine FSM;
 
-    public bool isPlayerDrawing;
-    public bool isAIDrawing;
-    public bool isPlayerAttacking;
+    private bool isDeliveringCard;
+    private bool isAISelectingDeck;
+    private bool isAISelectingCard;
+    private bool isUserSelectingCard;
+
+    private bool isAnimating;
+    private bool isPlaying;
+    private bool isPause;
+    private bool isBattling;
+
+    private bool isPlayerDrawing;
+    private bool isAIDrawing;
+    private bool isPlayerAttacking;
+    private bool isAIAttacking;
 
     #region main functions
     private void Awake() {
       camera = Camera.main;
-      playerCards = new HashSet<Card>();
+      userCards = new HashSet<Card>();
       aiCards = new HashSet<Card>();
       playingCards = new List<Card>();
+      states = new Dictionary<GameState, State>();
       cardDatas = Resources.LoadAll<CardData>("CardData");
       new System.Random().Shuffle(cardDatas);
     }
 
-    private void Start() {
-      if(gameData.isNewGame) StartCoroutine(CreateNewGame());
-      else StartCoroutine(LoadGame());
+    private IEnumerator Start() {
+      if (gameData.isNewGame) {
+        CreateCards();
+        CreateStateMachine(GameState.DeliverCard);
+      }
+      else {
+        LoadCards();
+        LoadGame();
+      }
+      yield return null;
     }
 
     private void Update() {
       input.GameUpdate(Time.deltaTime);
-      if (showResult) {
-        ShowGameResult();
-      }
-      if(input.IsExit && isPlaying) {
+      if(input.IsExit) {
         PauseGame();
       }
-      if (isAnimating) return;
-      if (input.IsMouseClick) {
-        if (isSelectingCard) {
-          Card selected = FindCardUnderMouse();
-          if (selected != null) StartCoroutine(SelectPlayerCardForDeck(selected));
-
-        }
-        if (isPlaying && isPlayerDrawing) {
-          Card selected = FindCardUnderMouse();
-          if (selected != null && selected.isPlayer) {
-            StartCoroutine(PlayerSelectCardForBattle(selected));
-          }
-        }
-      }
-      if(isPlaying && !isBattling && currentAICard != null && currentPlayerCard != null) {
-        StartCoroutine(ProcessBattle());
-      }
-      if (isAIDrawing) {
-        StartCoroutine(AISelectCardForBattle());
-      }
+      FSM.Update();
     }
     #endregion
 
     #region game logics
-    private Card FindCardUnderMouse() {
+
+    private void CreateStateMachine(GameState initState) {
+      FSM = new StateMachine(this);
+      var deliverCardState = new DeliverCard();
+      states.Add(GameState.DeliverCard, deliverCardState);
+      var userSelectDeck = new UserSelectDeck();
+      states.Add(GameState.UserSelectDeck, userSelectDeck);
+      var userSelectCard = new UserSelectCard();
+      states.Add(GameState.UserSelectCard, userSelectCard);
+      var aiSelectDeck = new AISelectDeck();
+      states.Add(GameState.AISelectDeck, aiSelectDeck);
+      var aiSelectCard = new AISelectCard();
+      states.Add(GameState.AISelectCard, aiSelectCard);
+      var userAttack = new UserAttack();
+      states.Add(GameState.UserAttack, userAttack);
+      var aiAttack = new AIAttack();
+      states.Add(GameState.AIAttack, aiAttack);
+      var startGame = new StartBattle();
+      states.Add(GameState.StartBattle, startGame);
+      var endGame = new EndGame();
+      states.Add(GameState.EndGame, endGame);
+
+      FSM.AddTransition(deliverCardState, new Transition() {
+        next = userSelectDeck,
+        condition = () => !isDeliveringCard
+      });
+      FSM.AddTransition(userSelectDeck, new Transition() {
+        next = aiSelectDeck,
+        condition = () => userCards.Count == Config.CardPerPlayer
+      });
+      FSM.AddTransition(aiSelectDeck, new Transition() {
+        next = startGame,
+        condition = () => !isAISelectingDeck
+      });
+
+      FSM.AddTransition(startGame, new Transition() {
+        next = aiSelectCard,
+        condition = () => isPlaying
+      });
+
+      FSM.AddTransition(aiSelectCard, new Transition() {
+        next = userSelectCard,
+        condition = () => currentUserCard == null && !isAISelectingCard
+      });
+
+      FSM.AddTransition(userSelectCard, new Transition() {
+        next = userAttack,
+        condition = () => currentUserCard != null && !isUserSelectingCard
+      });
+      FSM.AddTransition(userAttack, new Transition() {
+        next = aiAttack,
+        condition = () => currentAICard != null && !isPlayerAttacking
+      });
+      FSM.AddTransition(userAttack, new Transition() {
+        next = aiSelectCard,
+        condition = () => currentAICard == null && aiCards.Count > 0 && !isPlayerAttacking
+      });
+      FSM.AddTransition(userAttack, new Transition() {
+        next = endGame,
+        condition = () => currentAICard == null && aiCards.Count == 0 && !isPlayerAttacking
+      });
+      FSM.AddTransition(aiAttack, new Transition() {
+        next = userAttack,
+        condition = () => currentUserCard != null && !isAIAttacking
+      });
+      FSM.AddTransition(aiAttack, new Transition() {
+        next = userSelectCard,
+        condition = () => currentUserCard == null && userCards.Count > 0 && !isAIAttacking
+      });
+      FSM.AddTransition(aiAttack, new Transition() {
+        next = endGame,
+        condition = () => currentUserCard == null && userCards.Count == 0 && !isAIAttacking
+      });
+
+      FSM.AddTransition(aiSelectCard, new Transition() {
+        next = aiAttack,
+        condition = () => currentAICard != null && !isAISelectingCard
+      });
+
+      FSM.Start(states[initState]);
+    }
+
+    public void DeliverCard() {
+      StartCoroutine(IDeliverCard());
+    }
+
+    private IEnumerator IDeliverCard() {
+      isDeliveringCard = true;
+      yield return StartCoroutine(cardAnim.Animate(availableCards, camera.gameObject));
+      ClearCards();
+      GetUsedCards();
+      view.ShowSelectCardPanel();
+      isDeliveringCard = false;
+    }
+
+    public void PlayerSelectCardForDeck(Card selected) {
+      StartCoroutine(IPlayerSelectCardForDeck(selected));
+    }
+
+    private IEnumerator IPlayerSelectCardForDeck(Card selected) {
+      isAnimating = true;
+      selected.slot = userCards.Count;
+      selected.isPlayer = true;
+      userCards.Add(selected);
+      yield return StartCoroutine(cardAnim.AnimateUserSelectCard(selected, selected.slot));
+      selected.ToggleFront(true);
+      isAnimating = false;
+    }
+
+    public void AISelectCardForDeck() {
+      StartCoroutine(IAISelectCardForDeck());
+    }
+
+    private IEnumerator IAISelectCardForDeck() {
+      isAnimating = true;
+      isAISelectingDeck = true;
+      GetAICards();
+      yield return StartCoroutine(cardAnim.AnimateAISelectCard(aiCards));
+      isAISelectingDeck = false;
+      isAnimating = false;
+    }
+
+    public void AISelectCardForBattle() {
+      StartCoroutine(IAISelectCardForBattle());
+    }
+
+    private IEnumerator IAISelectCardForBattle() {
+      isAnimating = true;
+      isAISelectingCard = true;
+      var card = GetAICardFromDeck();
+      yield return StartCoroutine(cardAnim.MoveCardToAIFightPos(card));
+      card.ToggleFront(true);
+      currentAICard = card;
+      isAISelectingCard = false;
+      isAnimating = false;
+    }
+
+    public void PlayerSelectCardForBattle(Card selected) {
+      StartCoroutine(IPlayerSelectCardForBattle(selected));
+    }
+
+    private IEnumerator IPlayerSelectCardForBattle(Card selected) {
+      isAnimating = true;
+      isUserSelectingCard = true;
+      yield return StartCoroutine(cardAnim.MoveCardToPlayerFightPos(selected));
+      currentUserCard = selected;
+      isUserSelectingCard = false;
+      isAnimating = false;
+    }
+
+    public void PlayerAttack() {
+      StartCoroutine(IPlayerAttack());
+    }
+
+    private IEnumerator IPlayerAttack() {
+      isAnimating = true;
+      isPlayerAttacking = true;
+      yield return StartCoroutine(cardAnim.PlayerCardAttack(currentUserCard));
+      currentAICard.ReduceHp(currentUserCard.Atk);
+      if (currentAICard.IsDeath) {
+        currentAICard.Hide();
+        aiCards.Remove(currentAICard);
+        currentAICard = null;
+        userPoint++;
+        view.UpdatePlayerPoint(userPoint);
+      }
+      isPlayerAttacking = false;
+      isAnimating = false;
+    }
+
+    public void AIAttack() {
+      StartCoroutine(IAIAttack());
+    }
+
+    private IEnumerator IAIAttack() {
+      isAnimating = true;
+      isAIAttacking = true;
+      yield return StartCoroutine(cardAnim.AICardAttack(currentAICard));
+      currentUserCard.ReduceHp(currentAICard.Atk);
+      if (currentUserCard.IsDeath) {
+        currentUserCard.Hide();
+        userCards.Remove(currentUserCard);
+        currentUserCard = null;
+        aiPoint++;
+        view.UpdateAIPoint(aiPoint);
+      }
+      isAIAttacking = false;
+      isAnimating = false;
+    }
+
+    public void ShowGameResult() {
+      view.ShowResultBattlePanel(userPoint > aiPoint);
+    }
+
+    public void StartBattle() {
+      StartCoroutine(view.ShowStartBattlePanel());
+    }
+    #endregion
+
+    #region Helpers
+    public Card FindCardUnderMouse() {
+      if (isAnimating || !input.IsMouseClick) return null;
       RaycastHit hitInfo = new RaycastHit();
       bool hit = Physics.Raycast(camera.ScreenPointToRay(Input.mousePosition), out hitInfo, 30, Config.CardLayer);
       if (hit) {
@@ -94,115 +291,6 @@ namespace CardGame {
         }
       }
       return null;
-    }
-
-    private void ShowGameResult() {
-      showResult = false;
-      view.ShowResultBattlePanel(playerPoint > aiPoint);
-    }
-
-    private IEnumerator CreateNewGame() {
-      CreateCards();
-      yield return null;
-      yield return StartCoroutine(cardAnim.Animate(availableCards, camera.gameObject));
-      ClearCards();
-      GetUsedCards();
-      view.ShowSelectCardPanel();
-      isSelectingCard = true;
-    }
-
-    private IEnumerator LoadGame() {
-      LoadCards();
-      camera.transform.position = Config.CamFinalPos;
-      camera.transform.eulerAngles = Config.CamFinalRot;
-      playerPoint = Config.CardPerPlayer - aiCards.Count;
-      aiPoint = Config.CardPerPlayer - playerCards.Count;
-      view.UpdatePlayerPoint(playerPoint);
-      view.UpdateAIPoint(aiPoint);
-      yield return new WaitForSeconds(1);
-      if (playerPoint == Config.CardPerPlayer) {
-        showResult = true;
-        view.ShowResultBattlePanel(true);
-      }
-      else if (aiPoint == Config.CardPerPlayer) {
-        showResult = true;
-        view.ShowResultBattlePanel(false);
-      }
-      else {
-        isPlaying = true;
-        if (isBattling) StartCoroutine(ProcessBattle());
-      }
-    }
-
-    private IEnumerator ProcessBattle() {
-      isBattling = true;
-      var waitTime = new WaitForSeconds(0.75f);
-      yield return waitTime;
-      while (currentAICard != null && currentPlayerCard != null) {
-        if(isPlayerAttacking) {
-          yield return StartCoroutine(cardAnim.PlayerCardAttack(currentPlayerCard));
-          currentAICard.ReduceHp(currentPlayerCard.Atk);
-          if (currentAICard.IsDeath) {
-            currentAICard.Hide();
-            aiCards.Remove(currentAICard);
-            currentAICard = null;
-            playerPoint++;
-            view.UpdatePlayerPoint(playerPoint);
-            if (aiCards.Count > 0) {
-              isAIDrawing = true;
-            }
-            else {
-              showResult = true;
-            }
-          }
-          else {
-            isPlayerAttacking = false;
-          }
-        }
-        else {
-          yield return StartCoroutine(cardAnim.AICardAttack(currentAICard));
-          currentPlayerCard.ReduceHp(currentAICard.Atk);
-          if (currentPlayerCard.IsDeath) {
-            currentPlayerCard.Hide();
-            playerCards.Remove(currentPlayerCard);
-            currentPlayerCard = null;
-            aiPoint++;
-            view.UpdateAIPoint(aiPoint);
-            if (playerCards.Count > 0) {
-              isPlayerDrawing = true;
-            }
-            else {
-              showResult = true;
-            }
-          }
-          else {
-            isPlayerAttacking = true;
-          }
-        }
-        yield return waitTime;
-      }
-      if (showResult) isPlaying = false;
-      isBattling = false;
-    }
-
-    private IEnumerator PlayerSelectCardForBattle(Card selected) {
-      isAnimating = true;
-      yield return StartCoroutine(cardAnim.MoveCardToPlayerFightPos(selected));
-      isPlayerDrawing = false;//for saving data
-      currentPlayerCard = selected;
-      isPlayerAttacking = true;
-      isAnimating = false;
-    }
-
-    private IEnumerator AISelectCardForBattle() {
-      isAnimating = true;
-      var card = GetAICardFromDeck();
-      yield return StartCoroutine(cardAnim.MoveCardToAIFightPos(card));
-      isAIDrawing = false;//for saving data
-      card.ToggleFront(true);
-      currentAICard = card;
-      isPlayerAttacking = false;
-      isAnimating = false;
     }
 
     private Card GetAICardFromDeck() {
@@ -215,31 +303,10 @@ namespace CardGame {
       return null;
     }
 
-    private IEnumerator SelectPlayerCardForDeck(Card selected) {
-      isAnimating = true;
-      selected.slot = playerCards.Count;
-      selected.isPlayer = true;
-      playerCards.Add(selected);
-      yield return StartCoroutine(cardAnim.AnimateUserSelectCard(selected, selected.slot));
-      selected.ToggleFront(true);
-      if(playerCards.Count == Config.AllowedCardAmount / 2) {
-        GetAICards();
-        yield return StartCoroutine(cardAnim.AnimateAISelectCard(aiCards));
-        isSelectingCard = false;
-        //show start battle
-        yield return StartCoroutine(view.ShowStartBattlePanel());
-        //AI draw first
-        yield return StartCoroutine(AISelectCardForBattle());
-        isPlayerDrawing = true;
-        isPlaying = true;
-      }
-      isAnimating = false;
-    }
-
     private void GetAICards() {
       int slot = 0;
       foreach (var card in playingCards) {
-        if (!playerCards.Contains(card)) {
+        if (!userCards.Contains(card)) {
           aiCards.Add(card);
           card.slot = slot;
           slot++;
@@ -259,7 +326,7 @@ namespace CardGame {
     }
 
     private void ClearCards() {
-      playerCards.Clear();
+      userCards.Clear();
       aiCards.Clear();
       playingCards.Clear();
     }
@@ -275,51 +342,42 @@ namespace CardGame {
 
     private void LoadCards() {
       var map = new Dictionary<int, CardData>();
-      foreach(var cardData in cardDatas) {
+      foreach (var cardData in cardDatas) {
         map.Add(cardData.id, cardData);
       }
-      playerCards.Clear();
+      userCards.Clear();
       aiCards.Clear();
       GameInfo gameInfo = DataUtils.LoadData();
-      isBattling = gameInfo.isBattling;
-      isPlayerAttacking = gameInfo.isPlayerAttacking;
-      isPlayerDrawing = gameInfo.isPlayerDrawing;
-      isAIDrawing = gameInfo.isAIDrawing;
+      gameState = gameInfo.gameState;
       foreach (var cardInfo in gameInfo.cards) {
-        Card card = Factory.CreateCard(Vector3.zero);
-
-        if (cardInfo.isPlayerCard) {
-          if (cardInfo.isInBattle) {
-            currentPlayerCard = card;
-            card.Pos = CardUtils.GetPlayerBattlePos();
-          }
-          else {
-            card.Pos = CardUtils.GetPlayerWaitingPos(cardInfo.slot);
-          }
-          card.ToggleFront(true);
-          playerCards.Add(card);
-          card.isPlayer = true;
+        Card card = Factory.CreateCard(cardInfo, map[cardInfo.id]);
+        if (card.isPlayer) {
+          userCards.Add(card);
+          if (cardInfo.isInBattle) currentUserCard = card;
         }
         else {
-          if (cardInfo.isInBattle) {
-            currentAICard = card;
-            card.Pos = CardUtils.GetAIBattlePos();
-            card.ToggleFront(true);
-          }
-          else {
-            card.Pos = CardUtils.GetAIWaitingPos(cardInfo.slot);
-            card.ToggleFront(false);
-          }
           aiCards.Add(card);
+          if (cardInfo.isInBattle) currentAICard = card;
         }
-        card.UpdateData(map[cardInfo.id]);
-        card.UpdateUI();
-        card.UpdateInfo(cardInfo);
       }
+    }
+
+    private void LoadGame() {
+      camera.transform.position = Config.CamFinalPos;
+      camera.transform.eulerAngles = Config.CamFinalRot;
+      userPoint = Config.CardPerPlayer - aiCards.Count;
+      aiPoint = Config.CardPerPlayer - userCards.Count;
+      view.UpdatePlayerPoint(userPoint);
+      view.UpdateAIPoint(aiPoint);
+      CreateStateMachine(gameState);
     }
     #endregion
 
     #region game flow
+    public void StartPlay() {
+      isPlaying = true;
+    }
+
     public void PauseGame() {
       isPause = true;
       Time.timeScale = 0;
@@ -334,8 +392,9 @@ namespace CardGame {
 
     public void QuitAndSave() {
       Time.timeScale = 1;
-      DataUtils.SaveData(currentPlayerCard, currentAICard, playerCards, aiCards,
-          isBattling, isPlayerAttacking, isPlayerDrawing, isAIDrawing);
+      if (gameState > GameState.StartBattle) {
+        DataUtils.SaveData(currentUserCard, currentAICard, userCards, aiCards, gameState);
+      }
       Return();
     }
 

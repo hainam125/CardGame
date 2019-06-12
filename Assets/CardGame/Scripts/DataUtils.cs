@@ -8,10 +8,7 @@ using System.Text;
 
 namespace CardGame {
   public class GameInfo {
-    public bool isBattling;
-    public bool isPlayerAttacking;
-    public bool isPlayerDrawing;
-    public bool isAIDrawing;
+    public GameState gameState;
     public List<CardInfo> cards = new List<CardInfo>();
   }
 
@@ -43,10 +40,7 @@ namespace CardGame {
       GameInfo gameInfo = new GameInfo();
       xmlDoc.Load(DataPath);
       XmlNode levelNode = xmlDoc.GetElementsByTagName("level").Item(0);
-      gameInfo.isBattling = levelNode.Attributes["battle"].Value == "1";
-      gameInfo.isPlayerAttacking = levelNode.Attributes["playerAtk"].Value == "1";
-      gameInfo.isPlayerDrawing = levelNode.Attributes["playerDrawing"].Value == "1";
-      gameInfo.isAIDrawing = levelNode.Attributes["AIDrawing"].Value == "1";
+      gameInfo.gameState = (GameState)int.Parse(levelNode.Attributes["gameState"].Value);
 
       XmlNode cardBlockNode = xmlDoc.GetElementsByTagName("cards").Item(0);
       XmlNodeList cards = cardBlockNode.ChildNodes;
@@ -57,7 +51,7 @@ namespace CardGame {
     }
 
     public static void SaveData(Card currentPlayerCard, Card currentAICard, HashSet<Card> playerCards, HashSet<Card> aiCards,
-        bool isBattling, bool isPlayerAttacking, bool isPlayerDrawing, bool isAIDrawing) {
+        GameState gameState) {
 
       if (!HasSavedData()) {
         var file = File.Create(DataPath);
@@ -65,10 +59,7 @@ namespace CardGame {
       }
       XmlDocument xmlDoc = new XmlDocument();
       XmlElement elmRoot = xmlDoc.CreateElement("level");
-      elmRoot.SetAttribute("battle", isBattling ? "1" : "0");
-      elmRoot.SetAttribute("playerAtk", isPlayerAttacking ? "1" : "0");
-      elmRoot.SetAttribute("playerDrawing", isPlayerDrawing ? "1" : "0");
-      elmRoot.SetAttribute("AIDrawing", isAIDrawing ? "1" : "0");
+      elmRoot.SetAttribute("gameState", ((int)gameState).ToString());
       xmlDoc.AppendChild(elmRoot);
 
       XmlElement cardBlockElm = xmlDoc.CreateElement("cards");

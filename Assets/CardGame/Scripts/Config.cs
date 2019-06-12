@@ -1,6 +1,4 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace CardGame {
   public static class Config {
@@ -16,6 +14,8 @@ namespace CardGame {
     public const string CardTag = "Card";
     public const int CardLayer = 1 << 8;
 
+    public static Vector3 CamInitPos = new Vector3(0, 8.8f, -10);
+    public static Vector3 CamInitRot = new Vector3(50, 0, 0);
     public static Vector3 CamFinalPos = new Vector3(0, 20, 0);
     public static Vector3 CamFinalRot = new Vector3(90, 0, 0);
     public static Vector3 CardHideRot = new Vector3(-90, 0, 0);

@@ -63,9 +63,9 @@ namespace CardGame {
       Hp = data.hp;
     }
 
-    public void UpdateInfo(CardInfo info) {
-      Hp = info.hp;
-      slot = info.slot;
+    public void UpdateInfo(MCard info) {
+      Hp = info.Hp;
+      slot = info.Slot;
       hpText.text = Hp.ToString();
     }
 

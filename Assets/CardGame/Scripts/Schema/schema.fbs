@@ -1,0 +1,16 @@
+namespace CardGame;
+
+table MCard {
+  slot:int;
+  id:int;
+  hp:int;
+  isPlayerCard:bool;
+  isInBattle:bool;
+}
+
+table MGame {
+  gameState:int;
+  cards:[MCard];
+}
+
+root_type MGame;

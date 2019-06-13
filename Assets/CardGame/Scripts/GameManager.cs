@@ -42,7 +42,6 @@ namespace CardGame {
 
     private bool isAnimating;
     private bool isPlaying;
-    private bool isPause;
 
 
     #region main functions
@@ -344,17 +343,18 @@ namespace CardGame {
       }
       userCards.Clear();
       aiCards.Clear();
-      GameInfo gameInfo = DataUtils.LoadData();
-      gameState = gameInfo.gameState;
-      foreach (var cardInfo in gameInfo.cards) {
-        Card card = Factory.CreateCard(cardInfo, map[cardInfo.id]);
+      MGame mGame = DataUtils.LoadData();
+      gameState = (GameState)mGame.GameState;
+      for(int i = 0; i < mGame.CardsLength; i++) {
+        var mCard = mGame.Cards(i).Value;
+        Card card = Factory.CreateCard(mCard, map[mCard.Id]);
         if (card.isPlayer) {
           userCards.Add(card);
-          if (cardInfo.isInBattle) currentUserCard = card;
+          if (mCard.IsInBattle) currentUserCard = card;
         }
         else {
           aiCards.Add(card);
-          if (cardInfo.isInBattle) currentAICard = card;
+          if (mCard.IsInBattle) currentAICard = card;
         }
       }
     }
@@ -376,13 +376,11 @@ namespace CardGame {
     }
 
     public void PauseGame() {
-      isPause = true;
       Time.timeScale = 0;
       view.ShowPausePanel();
     }
 
     public void Resume() {
-      isPause = false;
       Time.timeScale = 1;
       view.HidePausePanel();
     }

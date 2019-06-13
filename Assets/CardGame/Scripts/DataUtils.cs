@@ -3,30 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Xml;
 using System.IO;
-using System.Linq;
-using System.Text;
+using FlatBuffers;
 
 namespace CardGame {
-  public class GameInfo {
-    public GameState gameState;
-    public List<CardInfo> cards = new List<CardInfo>();
-  }
-
-  public class CardInfo {
-    public int id;
-    public int slot;
-    public int hp;
-    public bool isPlayerCard;
-    public bool isInBattle;
-
-    public CardInfo(XmlNode node) {
-      id = int.Parse(node.Attributes["id"].Value);
-      slot = int.Parse(node.Attributes["slot"].Value);
-      hp = int.Parse(node.Attributes["hp"].Value);
-      isPlayerCard = node.Attributes["player"].Value == "1";
-      isInBattle = node.Attributes["battle"].Value == "1";
-    }
-  }
   public static class DataUtils {
     private static string DataPath = Path.Combine(Application.persistentDataPath, "data");
 
@@ -34,20 +13,14 @@ namespace CardGame {
       return File.Exists(DataPath);
     }
 
-    public static GameInfo LoadData() {
-      if (!HasSavedData()) return null;
-      XmlDocument xmlDoc = new XmlDocument();
-      GameInfo gameInfo = new GameInfo();
-      xmlDoc.Load(DataPath);
-      XmlNode levelNode = xmlDoc.GetElementsByTagName("level").Item(0);
-      gameInfo.gameState = (GameState)int.Parse(levelNode.Attributes["gameState"].Value);
-
-      XmlNode cardBlockNode = xmlDoc.GetElementsByTagName("cards").Item(0);
-      XmlNodeList cards = cardBlockNode.ChildNodes;
-      foreach (XmlNode card in cards) {
-        gameInfo.cards.Add(new CardInfo(card));
+    public static MGame LoadData() {
+      byte[] bytes;
+      using (var file = new FileStream(DataPath, FileMode.Open, FileAccess.Read)) {
+        bytes = new byte[file.Length];
+        file.Read(bytes, 0, bytes.Length);
       }
-      return gameInfo;
+      var buf = new ByteBuffer(bytes);
+      return MGame.GetRootAsMGame(buf);
     }
 
     public static void SaveData(Card currentPlayerCard, Card currentAICard, HashSet<Card> playerCards, HashSet<Card> aiCards,
@@ -57,32 +30,30 @@ namespace CardGame {
         var file = File.Create(DataPath);
         file.Dispose();
       }
-      XmlDocument xmlDoc = new XmlDocument();
-      XmlElement elmRoot = xmlDoc.CreateElement("level");
-      elmRoot.SetAttribute("gameState", ((int)gameState).ToString());
-      xmlDoc.AppendChild(elmRoot);
 
-      XmlElement cardBlockElm = xmlDoc.CreateElement("cards");
-      elmRoot.AppendChild(cardBlockElm);
+      var builder = new FlatBufferBuilder(1024);
+      var cards = new Offset<MCard>[playerCards.Count + aiCards.Count];
+      int i = 0;
       foreach(var card in playerCards) {
-        XmlElement elmCard = CreateCardElm(card, xmlDoc, true, card == currentPlayerCard);
-        cardBlockElm.AppendChild(elmCard);
+        var mCard = MCard.CreateMCard(builder, card.slot, card.Id, card.Hp, true, card == currentPlayerCard);
+        cards[i] = mCard;
+        i++;
       }
       foreach (var card in aiCards) {
-        XmlElement elmCard = CreateCardElm(card, xmlDoc, false, card == currentAICard);
-        cardBlockElm.AppendChild(elmCard);
+        var mCard = MCard.CreateMCard(builder, card.slot, card.Id, card.Hp, false, card == currentAICard);
+        cards[i] = mCard;
+        i++;
       }
-      xmlDoc.Save(DataPath);
-    }
 
-    public static XmlElement CreateCardElm(Card card, XmlDocument xmlDoc, bool isUser, bool isBattling) {
-      XmlElement elmCard = xmlDoc.CreateElement("card");
-      elmCard.SetAttribute("id", card.Id.ToString());
-      elmCard.SetAttribute("slot", card.slot.ToString());
-      elmCard.SetAttribute("hp", card.Hp.ToString());
-      elmCard.SetAttribute("player", isUser ? "1" : "0");
-      elmCard.SetAttribute("battle", isBattling ? "1" : "0");
-      return elmCard;
+      var cardsOffset = MGame.CreateCardsVector(builder, cards);
+
+      var game = MGame.CreateMGame(builder, (int)gameState, cardsOffset);
+      builder.Finish(game.Value);
+
+      using (var ms = new MemoryStream(builder.SizedByteArray())) {
+        File.WriteAllBytes(DataPath, ms.ToArray());
+        Debug.Log("SAVED !");
+      }
     }
   }
 

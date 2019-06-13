@@ -20,32 +20,32 @@ namespace CardGame {
           instance.cardParent).GetComponent<Card>();
     }
 
-    public static Card CreateCard(CardInfo cardInfo, CardData cardData) {
+    public static Card CreateCard(MCard mCard, CardData cardData) {
       Card card = CreateCard(Vector3.zero);
 
-      if (cardInfo.isPlayerCard) {
-        if (cardInfo.isInBattle) {
+      if (mCard.IsPlayerCard) {
+        if (mCard.IsInBattle) {
           card.Pos = CardUtils.GetPlayerBattlePos();
         }
         else {
-          card.Pos = CardUtils.GetPlayerWaitingPos(cardInfo.slot);
+          card.Pos = CardUtils.GetPlayerWaitingPos(mCard.Slot);
         }
         card.ToggleFront(true);
         card.isPlayer = true;
       }
       else {
-        if (cardInfo.isInBattle) {
+        if (mCard.IsInBattle) {
           card.Pos = CardUtils.GetAIBattlePos();
           card.ToggleFront(true);
         }
         else {
-          card.Pos = CardUtils.GetAIWaitingPos(cardInfo.slot);
+          card.Pos = CardUtils.GetAIWaitingPos(mCard.Slot);
           card.ToggleFront(false);
         }
       }
       card.UpdateData(cardData);
       card.UpdateUI();
-      card.UpdateInfo(cardInfo);
+      card.UpdateInfo(mCard);
       return card;
     }
   }
